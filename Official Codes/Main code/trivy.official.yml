@@ -1,0 +1,32 @@
+trigger: none
+pool:
+  vmImage: 'ubuntu-latest'
+variables:
+  FILE: 'docker-compose.hk2026.yml'
+jobs:
+- job: ExtractImages
+  steps:
+  - checkout: self
+  - script: |
+      sed -i 's/\r$//' imageExtract.sh # removes invisible Windows carriage return characters
+      chmod +x imageExtract.sh
+      ./imageExtract.sh $(FILE)
+    name: setMatrix
+- job: RunTrivyScans
+  displayName: "Trivy Scan"
+  dependsOn: ExtractImages
+  strategy:
+    matrix: $[ dependencies.ExtractImages.outputs['setMatrix.imageMatrix'] ]
+  steps:
+  - task: trivy@2 # Use the latest Trivy version
+    displayName: 'Scan $(IMAGE_TO_SCAN)'
+    inputs:
+      version: 'latest'
+      type: 'image'
+      target: '$(IMAGE_TO_SCAN)'
+      scanners: 'license,misconfig,secret,vuln' # enable all Trivy scanners for comprehensive scanning - vulnerability, misconfiguration, secret detection, and license analysis
+      severities: 'UNKNOWN, LOW, MEDIUM, HIGH, CRITICAL' # include all severity levels in the report
+      format: 'html' # generate HTML report for better readability and visualization of results
+      showSuppressed: true # include suppressed vulnerabilities in the report for full visibility, even if they are not failing the build
+      reports: 'html'
+      publish: true

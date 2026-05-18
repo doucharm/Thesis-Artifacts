@@ -1,0 +1,38 @@
+trigger:
+- none
+pool:
+  vmImage: 'ubuntu-latest'
+variables:
+  testResultsDir: '$(System.DefaultWorkingDirectory)/test-results'
+  testFolder: 'tests'
+  coverageFolder: 'server'
+stages:
+- stage: Testing
+  displayName: 'Run Tests'
+  jobs:
+  - job: FunctionalityTest
+    displayName: 'Functionality testing using tests in /tests directory'
+    steps:
+    - script: |
+        pip install pytest pytest-cov
+        pip install -r requirements-dev.txt
+      displayName: 'Install dependencies'
+    - script: |
+        pytest $(testFolder) \
+          --cov=$(coverageFolder) \
+          --cov-report=html:$(testResultsDir)/htmlcov \
+          --cov-report=xml:$(testResultsDir)/coverage.xml \
+          --junitxml=$(testResultsDir)/junit.xml
+      displayName: 'Run functionality tests in .\tests'
+      continueOnError: true 
+    - task: PublishTestResults@2
+      displayName: 'Publish Test Results to ADO UI'
+      condition: succeededOrFailed()
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: '$(testResultsDir)/junit.xml'
+    - task: PublishCodeCoverageResults@2
+      displayName: 'Publish Code Coverage to ADO UI'
+      condition: succeededOrFailed()
+      inputs:
+        summaryFileLocation: '$(testResultsDir)/coverage.xml'
