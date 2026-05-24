@@ -1,0 +1,39 @@
+  parameters:
+    - name: IMAGE_TO_SCAN
+      default: postgres  
+  jobs:
+  - job: TrivyScan
+    displayName: 'Trivy: scan $(IMAGE_TO_SCAN)'
+    pool:
+      vmImage: ubuntu-latest
+    variables:
+      TRIVY_IMAGE: 'ghcr.io/aquasecurity/trivy@sha256:1c78ed1ef824ab8bb05b04359d186e4c1229d0b3e67005faacb54a7d71974f73' #sample Trivy release digest
+    steps:
+    - script: |
+        # set -euo pipefail
+        mkdir -p "$(Build.ArtifactStagingDirectory)/trivy"
+        docker pull "$(TRIVY_IMAGE)"
+        docker run --rm "$(TRIVY_IMAGE)" --version
+      displayName: 'Pull pinned Trivy & verify'
+
+    - script: |
+        # set -euo pipefail
+        docker run --rm \
+        #  -v /var/run/docker.sock:/var/run/docker.sock \ 
+          -v "$(Build.ArtifactStagingDirectory)/trivy:/out" \
+          "$(TRIVY_IMAGE)" image \
+            --scanners vuln,misconfig,secret,license \
+            --severity LOW,MEDIUM,HIGH,CRITICAL \
+            --format json \
+            --output /out/trivy-report.json \
+            --timeout 15m \
+            --exit-code 1 \
+            $(IMAGE_TO_SCAN)
+      displayName: 'Trivy scan → JSON'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Trivy JSON report'
+      condition: succeededOrFailed()
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)/trivy'
+        ArtifactName: 'trivy-reports'

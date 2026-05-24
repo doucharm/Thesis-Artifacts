@@ -1,0 +1,35 @@
+
+pool:
+  vmImage: 'ubuntu-latest'
+variables:
+  imageName: 'myapp'
+  imageTag: '$(SemanticVersion)'
+  dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
+stages:
+  - stage: BuildAndScan
+    displayName: 'Build & scan'
+    jobs:
+      - job: build_scan
+        displayName: 'Build image and run Trivy'
+        steps:
+
+          - task: Docker@2
+            displayName: 'Build Docker image'
+            inputs:
+              command: 'build'
+              Dockerfile: '$(dockerfilePath)'
+              repository: '$(imageName)'
+              tags: '$(imageTag)'
+              arguments: '--load'
+
+          - task: trivy@2
+            displayName: 'Trivy: scan image'
+            inputs:
+              version: 'latest'
+              type: 'image'
+              target: '$(imageName):$(imageTag)'
+              severities: 'HIGH,CRITICAL,MEDIUM,LOW,UNKNOWN'
+              ignoreUnfixed: true
+              scanners: 'vuln,secret,misconfig,license'
+              reports: 'json'   
+              publish: true          

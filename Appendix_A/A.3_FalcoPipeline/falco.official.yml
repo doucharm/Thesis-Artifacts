@@ -1,0 +1,48 @@
+trigger: none
+jobs:
+- job: RunFalcoScan
+  displayName: Run Falco to monitor deployed container services 
+  pool:
+    vmImage: 'ubuntu-latest'
+  variables:
+    FILE: "docker-compose.hk2026.yml"
+  steps:
+  - task: CmdLine@2
+    displayName: 'Deploy Falco Monitor'
+    inputs:
+      script: |
+        docker run -d \
+          --name falco \
+          --privileged \
+          -v $(System.DefaultWorkingDirectory)/falco_rules.local.yaml:/etc/falco/falco_rules.local.yaml \ # map falco rules file
+          -v /var/run/docker.sock:/host/var/run/docker.sock \
+          -v /dev:/host/dev \ # k-mod probe access
+          -v /proc:/host/proc:ro \
+          -v /boot:/host/boot:ro \  # Kmod & eBPF driver access
+          -v /lib/modules:/host/lib/modules:ro \ # k-mod probe access
+          -v /usr/src:/host/usr/src:ro \ # Kmod & eBPF driver access
+          -v /etc:/host/etc:ro \ # read os configuration for driver selection
+          falcosecurity/falco # default latest Falco image, can be pinned to a specific digest for immutability
+  - task: CmdLine@2
+    displayName: 'Deploy Application Stack'
+    inputs:
+      script: docker compose -f $(FILE) up -d
+  - task: CmdLine@2
+    displayName: 'Monitor deployed services for unintended behavior'
+    inputs:
+      script: sleep 100
+  - task: CmdLine@2
+    displayName: 'End Application Stack'
+    inputs:
+      script: docker compose -f $(FILE) down 
+  - task: CmdLine@2
+    displayName: 'Retrieve Falco log'
+    inputs:
+      script: |
+        docker logs falco > $(Build.ArtifactStagingDirectory)/falco-security-report.log
+  - task: PublishPipelineArtifact@1
+    inputs:
+      targetPath: '$(Build.ArtifactStagingDirectory)/falco-security-report.log'
+      artifact: 'FalcoSecurityReport'
+      publishLocation: 'pipeline'
+    displayName: 'Publish Security Report'
